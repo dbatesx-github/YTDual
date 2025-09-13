@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube Playlist Manager</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 2rem;
+            background-color: #f4f7f6;
+            color: #333;
+        }
+        #app-container {
+            display: grid;
+            grid-template-columns: 1fr 480px;
+            gap: 2rem;
+            max-width: 1600px;
+            margin: auto;
+        }
+        #main-controls, #playlist-section, #player-section {
+            background-color: #fff;
+            padding: 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        h1, h2 {
+            margin-top: 0;
+        }
+        button {
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 5px;
+            background-color: #007bff;
+            color: white;
+            cursor: pointer;
+            font-size: 1rem;
+            margin-right: 0.5rem;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        #btn-delete-all {
+            background-color: #dc3545;
+        }
+        #btn-delete-all:hover {
+            background-color: #c82333;
+        }
+        #playlist-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+        }
+        #playlist-table th, #playlist-table td {
+            padding: 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        #playlist-table th {
+            background-color: #f8f9fa;
+        }
+        #playlist-table img {
+            max-width: 120px;
+            border-radius: 4px;
+        }
+        #playlist-table input[type="number"], #playlist-table input[type="checkbox"] {
+            width: 60px;
+        }
+        .video-controls button, .row-controls button {
+            font-size: 0.8rem;
+            padding: 0.3rem 0.6rem;
+        }
+        #player-container {
+            position: sticky;
+            top: 2rem;
+        }
+        #embedded-player {
+            width: 100%;
+            aspect-ratio: 16 / 9;
+            background-color: #000;
+        }
+        .row-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        .row-controls button {
+            width: 30px;
+        }
+        tr.playing {
+            background-color: #e7f3ff;
+            font-weight: bold;
+        }
+        .modal-backdrop {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.6);
+            z-index: 100;
+            display: none; /* Hidden by default */
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-content {
+            background-color: #fff;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+            width: 90%;
+            max-width: 500px;
+        }
+        .modal-content h2 {
+            margin-top: 0;
+        }
+        .modal-content label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: bold;
+        }
+        .modal-content input {
+            width: calc(100% - 1rem);
+            padding: 0.5rem;
+            margin-bottom: 1rem;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="credentials-modal" class="modal-backdrop">
+        <div class="modal-content">
+            <h2>API Credentials Required</h2>
+            <p>Please provide your Google API Key and Client ID to connect to YouTube services.</p>
+            <label for="api-key-input">API Key</label>
+            <input type="text" id="api-key-input">
+            <label for="client-id-input">Client ID</label>
+            <input type="text" id="client-id-input">
+            <button id="btn-save-credentials">Save Credentials</button>
+        </div>
+    </div>
+
+    <div id="app-container">
+        <div id="left-panel">
+            <div id="main-controls">
+                <h2>Playlist Controls</h2>
+                <input type="text" id="video-url-input" placeholder="Paste YouTube Video URL here" size="40">
+                <button id="btn-add-video">Add Video</button>
+                <button id="btn-auth">Authorize</button>
+                <button id="btn-save-yt" style="display:none;">Save to YouTube</button>
+                <button id="btn-delete-all">Delete All</button>
+                <button id="btn-open-player">Open 2nd Window Player</button>
+            </div>
+
+            <div id="playlist-section">
+                <h2>My Playlist</h2>
+                <table id="playlist-table">
+                    <thead>
+                        <tr>
+                            <th>Reorder</th>
+                            <th>Thumbnail</th>
+                            <th>Title</th>
+                            <th>Start (s)</th>
+                            <th>End (s)</th>
+                            <th>Play Next</th>
+                            <th>Controls</th>
+                        </tr>
+                    </thead>
+                    <tbody id="playlist-body">
+                        <!-- Video rows will be injected here by JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="player-section">
+            <h2>Player</h2>
+            <div id="player-container">
+                <div id="embedded-player"></div>
+            </div>
+            <div id="global-player-controls" style="margin-top: 1rem;">
+                <button id="btn-global-prev">Previous</button>
+                <button id="btn-global-play">Play</button>
+                <button id="btn-global-stop">Stop</button>
+                <button id="btn-global-next">Next</button>
+            </div>
+        </div>
+    </div>
+
+    <script async defer src="https://apis.google.com/js/api.js"></script>
+    <script async defer src="https://accounts.google.com/gsi/client"></script>
+    <script src="https://www.youtube.com/iframe_api"></script>
+    <script>
+        // --- Global State ---
+        let playlist = [];
+        let embeddedPlayer, externalPlayer;
+        let playerWindow = null;
+        let currentVideoIndex = null;
+        let apiKey = null;
+        let clientId = null;
+        let tokenClient;
+        let accessToken = null;
+        let isPlayerReady = false;
+        let windowMonitorInterval = null;
+
+        // --- Function Definitions (Global Scope) ---
+
+        function handlePopupWindowClose() {
+            if (windowMonitorInterval) {
+                clearInterval(windowMonitorInterval);
+                windowMonitorInterval = null;
+            }
+            playerWindow = null; // Mark window as closed first
+
+            if (embeddedPlayer) {
+                embeddedPlayer.unMute();
+            }
+            // Call the main stop function to reset state consistently
+            stopVideo();
+        }
+
+        // --- UI & Playlist Logic ---
+        function setPlaybackControlsEnabled(enabled) {
+            document.getElementById('btn-global-play').disabled = !enabled;
+            document.getElementById('btn-global-stop').disabled = !enabled;
+            document.getElementById('btn-global-next').disabled = !enabled;
+            document.getElementById('btn-global-prev').disabled = !enabled;
+            document.querySelectorAll('.btn-row-play').forEach(btn => btn.disabled = !enabled);
+            document.querySelectorAll('.btn-row-stop').forEach(btn => btn.disabled = !enabled);
+        }
+
+        // --- Google API & Player Initialization ---
+        function initializeGis() {
+            gapi.load('client', initializeGapiClient);
+        }
+
+        async function initializeGapiClient() {
+            await gapi.client.load('https://www.googleapis.com/discovery/v1/apis/youtube/v3/rest');
+            tokenClient = google.accounts.oauth2.initTokenClient({
+                client_id: clientId,
+                scope: 'https://www.googleapis.com/auth/youtube.force-ssl',
+                callback: (tokenResponse) => {
+                    if (tokenResponse && tokenResponse.access_token) {
+                        accessToken = tokenResponse.access_token;
+                        updateSigninStatus(true);
+                    }
+                },
+            });
+        }
+
+        window.onYouTubeIframeAPIReady = function() {
+            embeddedPlayer = new YT.Player('embedded-player', {
+                height: '270', width: '480', videoId: '', playerVars: { 'playsinline': 1 },
+                events: {
+                    'onReady': onPlayerReady,
+                    'onStateChange': onPlayerStateChange
+                }
+            });
+        };
+
+        function onPlayerReady(event) {
+            isPlayerReady = true;
+            setPlaybackControlsEnabled(true);
+        }
+
+        function onPlayerStateChange(event) {
+            updateUIForPlayerState(event.data);
+            if (event.data === YT.PlayerState.ENDED && currentVideoIndex !== null) {
+                const currentVideo = playlist[currentVideoIndex];
+                if (currentVideo && currentVideo.playNext) playNextVideo();
+            }
+        }
+
+        function getActivePlayer() { return (playerWindow && !playerWindow.closed && externalPlayer) ? externalPlayer : embeddedPlayer; }
+
+        // --- Player Control ---
+        function playVideo(index) {
+            if (typeof index !== 'number' || index < 0 || index >= playlist.length) return;
+            if (!isPlayerReady) { console.error("Player not ready call was made, but blocked."); return; }
+
+            currentVideoIndex = index;
+            const video = playlist[index];
+            const options = { videoId: video.id, startSeconds: video.startTime || 0 };
+            if (video.endTime > 0) options.endSeconds = video.endTime;
+
+            embeddedPlayer.loadVideoById(options);
+            if (playerWindow && !playerWindow.closed) {
+                playerWindow.playVideoInPopup(options);
+            }
+        }
+        function pauseVideo() {
+            embeddedPlayer?.pauseVideo();
+            if (playerWindow && !playerWindow.closed) {
+                playerWindow.pauseVideoInPopup();
+            }
+        }
+        function stopVideo() {
+            embeddedPlayer?.stopVideo();
+            if (playerWindow && !playerWindow.closed) {
+                playerWindow.stopVideoInPopup();
+            }
+            currentVideoIndex = null;
+            updateUIForPlayerState(-1);
+        }
+        function playNextVideo() {
+            const nextIndex = currentVideoIndex === null ? 0 : currentVideoIndex + 1;
+            if (nextIndex < playlist.length) playVideo(nextIndex);
+        }
+        function playPrevVideo() {
+            if (currentVideoIndex > 0) playVideo(currentVideoIndex - 1);
+        }
+        function resumeVideo() {
+            embeddedPlayer?.playVideo();
+            if (playerWindow && !playerWindow.closed) {
+                playerWindow.resumeVideoInPopup();
+            }
+        }
+
+        function toggleGlobalPlayPause() {
+            if (!isPlayerReady) return;
+            const btn = document.getElementById('btn-global-play');
+            if (btn.textContent === 'Pause') {
+                pauseVideo();
+            } else {
+                if (currentVideoIndex === null && playlist.length > 0) {
+                    playVideo(0);
+                } else {
+                    resumeVideo();
+                }
+            }
+        }
+
+        function playCurrentVideoInPopup() {
+            const indexToPlay = (currentVideoIndex === null) ? 0 : currentVideoIndex;
+            playVideo(indexToPlay);
+        }
+
+        function openExternalPlayer() {
+            if (playerWindow && !playerWindow.closed) {
+                playerWindow.focus();
+                return;
+            }
+
+            embeddedPlayer?.mute();
+
+            playerWindow = window.open('', 'YouTubePlayerWindow', 'height=400,width=600,scrollbars=no,resizable=yes');
+
+            if (windowMonitorInterval) clearInterval(windowMonitorInterval);
+            windowMonitorInterval = setInterval(() => {
+                if (playerWindow && playerWindow.closed) {
+                    handlePopupWindowClose();
+                }
+            }, 500);
+            if (!playerWindow) {
+                alert('Popup blocked! Please allow popups for this site.');
+                return;
+            }
+
+            playerWindow.document.title = 'YouTube Player';
+
+            const style = playerWindow.document.createElement('style');
+            style.textContent = `.ytp-ce-element { display: none !important; }`;
+            playerWindow.document.head.appendChild(style);
+
+            playerWindow.document.body.style.margin = '0';
+            playerWindow.document.body.style.overflow = 'hidden';
+            playerWindow.document.body.style.backgroundColor = '#000';
+
+            const playerDiv = playerWindow.document.createElement('div');
+            playerDiv.id = 'player';
+            playerWindow.document.body.appendChild(playerDiv);
+
+            const apiScript = playerWindow.document.createElement('script');
+            apiScript.src = 'https://www.youtube.com/iframe_api';
+
+            apiScript.onload = () => {
+                const initScript = playerWindow.document.createElement('script');
+                initScript.textContent = `
+                    let popupPlayer;
+                    window.onYouTubeIframeAPIReady = function() {
+                        popupPlayer = new YT.Player('player', {
+                            height: '100%',
+                            width: '100%',
+                            playerVars: { 'playsinline': 1, 'autoplay': 1 },
+                            events: {
+                                'onReady': () => { if (window.opener) window.opener.playCurrentVideoInPopup(); },
+                                'onStateChange': (event) => { if (window.opener) window.opener.onPlayerStateChange(event); }
+                            }
+                        });
+                    };
+                    function playVideoInPopup(options) { popupPlayer?.loadVideoById(options); }
+                    function pauseVideoInPopup() { popupPlayer?.pauseVideo(); }
+                    function stopVideoInPopup() { popupPlayer?.stopVideo(); }
+                    function resumeVideoInPopup() { popupPlayer?.playVideo(); }
+                `;
+                playerWindow.document.body.appendChild(initScript);
+            };
+            playerWindow.document.body.appendChild(apiScript);
+        }
+
+        // --- UI & Playlist Logic ---
+        function updateUIForPlayerState(state) {
+            document.querySelectorAll('.btn-row-play').forEach(btn => btn.textContent = 'Play');
+            document.querySelectorAll('tr.playing').forEach(row => row.classList.remove('playing'));
+            // This needs a null check because it can be called from stopVideo before the DOM is ready.
+            const btnGlobalPlay = document.getElementById('btn-global-play');
+            if (btnGlobalPlay) btnGlobalPlay.textContent = 'Play';
+
+            if (state === YT.PlayerState.PLAYING && currentVideoIndex !== null) {
+                if (btnGlobalPlay) btnGlobalPlay.textContent = 'Pause';
+                const video = playlist[currentVideoIndex];
+                const row = document.querySelector(`tr[data-video-id="${video.id}"]`);
+                if (row) {
+                    row.querySelector('.btn-row-play').textContent = 'Pause';
+                    row.classList.add('playing');
+                }
+            }
+        }
+        function renderPlaylist() {
+            const playlistBody = document.getElementById('playlist-body');
+            playlistBody.innerHTML = '';
+            if (playlist.length === 0) { playlistBody.innerHTML = `<tr><td colspan="7" style="text-align: center;">Playlist is empty.</td></tr>`; return; }
+            playlist.forEach((video, index) => {
+                const row = document.createElement('tr');
+                row.dataset.videoId = video.id;
+                row.dataset.index = index;
+                row.innerHTML = `
+                    <td class="row-controls">
+                        <button class="btn-move-up" ${index === 0 ? 'disabled' : ''}>▲</button>
+                        <button class="btn-move-down" ${index === playlist.length - 1 ? 'disabled' : ''}>▼</button>
+                    </td>
+                    <td><img src="https://i.ytimg.com/vi/${video.id}/mqdefault.jpg" alt="Thumbnail" style="width:120px;"></td>
+                    <td>${video.title}</td>
+                    <td><input type="number" class="input-start-time" value="${video.startTime || 0}" min="0"></td>
+                    <td><input type="number" class="input-end-time" value="${video.endTime || 0}" min="0"></td>
+                    <td><input type="checkbox" class="input-play-next" ${video.playNext ? 'checked' : ''}></td>
+                    <td class="video-controls">
+                        <button class="btn-row-play" ${!isPlayerReady ? 'disabled' : ''}>Play</button>
+                        <button class="btn-row-stop" ${!isPlayerReady ? 'disabled' : ''}>Stop</button>
+                        <button class="btn-row-delete">Delete</button>
+                    </td>`;
+                playlistBody.appendChild(row);
+            });
+        }
+        function loadPlaylist() {
+            const savedData = localStorage.getItem('youtubePlaylist');
+            if (savedData) playlist = JSON.parse(savedData);
+            renderPlaylist();
+        }
+        function savePlaylist() { localStorage.setItem('youtubePlaylist', JSON.stringify(playlist)); }
+        async function addVideo() {
+            const videoUrlInput = document.getElementById('video-url-input');
+            const url = videoUrlInput.value.trim();
+            if (!url) return;
+            const videoId = extractVideoId(url);
+            if (!videoId) { alert('Invalid YouTube URL'); return; }
+            let title = `Video: ${videoId}`;
+            if (apiKey) {
+                try {
+                    const response = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${videoId}&key=${apiKey}`);
+                    const data = await response.json();
+                    if (data.items && data.items.length > 0) title = data.items[0].snippet.title;
+                } catch (error) { console.error("Error fetching video title:", error); }
+            }
+            playlist.push({ id: videoId, title: title, startTime: 0, endTime: 0, playNext: true });
+            savePlaylist();
+            renderPlaylist();
+            videoUrlInput.value = '';
+        }
+        function extractVideoId(url) {
+            const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch?v=|\&v=)([^#\&\?]*).*/;
+            return (url.match(regExp) && url.match(regExp)[2].length === 11) ? url.match(regExp)[2] : null;
+        }
+
+        // --- Credentials & Auth Logic ---
+        function loadAndVerifyCredentials() {
+            apiKey = localStorage.getItem('youtubeApiKey');
+            clientId = localStorage.getItem('youtubeApiClientId');
+            if (apiKey && clientId) initializeGis();
+            else document.getElementById('credentials-modal').style.display = 'flex';
+        }
+        function saveCredentials() {
+            const apiKeyVal = document.getElementById('api-key-input').value.trim();
+            const clientIdVal = document.getElementById('client-id-input').value.trim();
+            if (apiKeyVal && clientIdVal) {
+                apiKey = apiKeyVal;
+                clientId = clientIdVal;
+                localStorage.setItem('youtubeApiKey', apiKey);
+                localStorage.setItem('youtubeApiClientId', clientId);
+                document.getElementById('credentials-modal').style.display = 'none';
+                initializeGis();
+            } else alert('Please provide both an API Key and a Client ID.');
+        }
+        function updateSigninStatus(isSignedIn) {
+            const btnAuth = document.getElementById('btn-auth');
+            const btnSaveToYouTube = document.getElementById('btn-save-yt');
+            btnAuth.textContent = isSignedIn ? 'Sign Out' : 'Authorize';
+            btnSaveToYouTube.style.display = isSignedIn ? 'inline-block' : 'none';
+        }
+        function handleAuthClick() {
+            if (accessToken) {
+                google.accounts.oauth2.revoke(accessToken, () => {
+                    accessToken = null;
+                    updateSigninStatus(false);
+                });
+            } else if (tokenClient) {
+                tokenClient.requestAccessToken({ prompt: 'consent' });
+            }
+        }
+        async function saveToYouTube() {
+            if (!accessToken) { alert("You must be signed in to save a playlist."); return; }
+            if (playlist.length === 0) { alert("Your playlist is empty."); return; }
+            const playlistTitle = prompt("Enter a title for your new YouTube playlist:", "My Awesome Playlist");
+            if (!playlistTitle) return;
+            try {
+                gapi.client.setToken({ access_token: accessToken });
+                const playlistResponse = await gapi.client.youtube.playlists.insert({
+                    part: 'snippet,status',
+                    resource: {
+                        snippet: { title: playlistTitle, description: 'Created with Playlist Manager' },
+                        status: { privacyStatus: 'private' }
+                    }
+                });
+                const newPlaylistId = playlistResponse.result.id;
+                alert(`Playlist '${playlistTitle}' created! Now adding videos...`);
+                for (const video of playlist) {
+                    await gapi.client.youtube.playlistItems.insert({
+                        part: 'snippet',
+                        resource: {
+                            snippet: {
+                                playlistId: newPlaylistId,
+                                resourceId: { kind: 'youtube#video', videoId: video.id }
+                            }
+                        }
+                    });
+                }
+                alert('All videos added to the playlist!');
+            } catch (error) {
+                console.error("Error saving playlist:", error);
+                alert(`An error occurred: ${error.result?.error?.message || error.toString()}`);
+            }
+        }
+
+        // --- App Initialization ---
+        document.addEventListener('DOMContentLoaded', () => {
+            // Get DOM elements
+            const btnAddVideo = document.getElementById('btn-add-video');
+            const btnOpenPlayer = document.getElementById('btn-open-player');
+            const btnDeleteAll = document.getElementById('btn-delete-all');
+            const btnGlobalPlay = document.getElementById('btn-global-play');
+            const btnGlobalStop = document.getElementById('btn-global-stop');
+            const btnGlobalNext = document.getElementById('btn-global-next');
+            const btnGlobalPrev = document.getElementById('btn-global-prev');
+            const btnSaveCredentials = document.getElementById('btn-save-credentials');
+            const btnAuth = document.getElementById('btn-auth');
+            const btnSaveToYouTube = document.getElementById('btn-save-yt');
+            const playlistBody = document.getElementById('playlist-body');
+
+            // Attach event listeners
+            btnAddVideo.addEventListener('click', addVideo);
+            btnOpenPlayer.addEventListener('click', openExternalPlayer);
+            btnSaveCredentials.addEventListener('click', saveCredentials);
+            btnAuth.addEventListener('click', handleAuthClick);
+            btnSaveToYouTube.addEventListener('click', saveToYouTube);
+            btnDeleteAll.addEventListener('click', () => {
+                if (confirm('Are you sure you want to delete the entire playlist?')) {
+                    stopVideo();
+                    playlist = [];
+                    savePlaylist();
+                    renderPlaylist();
+                }
+            });
+            btnGlobalPlay.addEventListener('click', toggleGlobalPlayPause);
+            btnGlobalStop.addEventListener('click', stopVideo);
+            btnGlobalNext.addEventListener('click', playNextVideo);
+            btnGlobalPrev.addEventListener('click', playPrevVideo);
+
+            playlistBody.addEventListener('click', (e) => {
+                const target = e.target;
+                const row = target.closest('tr');
+                if (!row || !row.dataset.videoId) return;
+                const index = parseInt(row.dataset.index, 10);
+                if (target.classList.contains('btn-row-play')) {
+                    if (target.textContent === 'Pause') {
+                        pauseVideo();
+                    } else {
+                        playVideo(index);
+                    }
+                } else if (target.classList.contains('btn-row-stop')) {
+                    stopVideo();
+                } else if (target.classList.contains('btn-row-delete')) {
+                    playlist.splice(index, 1);
+                    savePlaylist();
+                    renderPlaylist();
+                } else if (target.classList.contains('btn-move-up')) {
+                    if (index > 0) {
+                        [playlist[index], playlist[index - 1]] = [playlist[index - 1], playlist[index]];
+                        savePlaylist();
+                        renderPlaylist();
+                    }
+                } else if (target.classList.contains('btn-move-down')) {
+                    if (index < playlist.length - 1) {
+                        [playlist[index], playlist[index + 1]] = [playlist[index + 1], playlist[index]];
+                        savePlaylist();
+                        renderPlaylist();
+                    }
+                }
+            });
+
+            playlistBody.addEventListener('input', (e) => {
+                const target = e.target;
+                const row = target.closest('tr');
+                if (!row || !row.dataset.videoId) return;
+                const index = parseInt(row.dataset.index, 10);
+                const video = playlist[index];
+                if (target.classList.contains('input-start-time')) {
+                    video.startTime = parseInt(target.value, 10);
+                } else if (target.classList.contains('input-end-time')) {
+                    video.endTime = parseInt(target.value, 10);
+                } else if (target.classList.contains('input-play-next')) {
+                    video.playNext = target.checked;
+                }
+                savePlaylist();
+            });
+
+            // Initial Load
+            setPlaybackControlsEnabled(false);
+            loadPlaylist();
+            loadAndVerifyCredentials();
+        });
+    </script>
+
+</body>
+</html>
